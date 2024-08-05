@@ -6,22 +6,18 @@ const CLIENT_ID = "Ov23liOrQ94iafbT1wjK"
 
 function App(){
   const [isLogged, setIsLogged] = useState(false);
-  const [number, setNumber] = useState<{generated: string} | null>(null);
+  const [number, setNumber] = useState<string>("");
+  const [credentials, setCredentials] = useState(["", ""]);
   
   useEffect(()=> {
     const queryString = window.location.search;
     const urlParams = new URLSearchParams(queryString);
     var code = urlParams.get("code")
-    if (code == null && localStorage.getItem("accessCode") === null){
+    if (code == null && localStorage.getItem("accessToken") === null){
       setIsLogged(false)
     }else{
       setIsLogged(true)
       getAccessToken(code)
-      if (localStorage.getItem("accessCode") === null){
-        if (code != null){
-          localStorage.setItem("accessCode", code)
-        }
-      }
       let interval = setInterval(async () => {
         await fetch("http://localhost:8000/getNumber", {
           method: "GET"
@@ -29,7 +25,7 @@ function App(){
         .then(res => res.json())
         .then(
           (result) => {
-            setNumber(result);
+            setNumber(result.generated);
           }
         );
       }, 500);
@@ -45,12 +41,11 @@ function App(){
   }
 
   function logoutFromGitHub(){
-    localStorage.removeItem("accessCode");
+    localStorage.removeItem("accessToken");
     window.location.assign("http://localhost:5173");
   }
 
   async function getAccessToken(code: string | null){
-    console.log("lel")
     await fetch("http://localhost:8000/getAccessToken", {
       method:"POST",
       body:JSON.stringify({
@@ -60,29 +55,24 @@ function App(){
       })
     }).then((response) => {
           return response.json();
-        }).then((data) => {
-           console.log(data)
-        })
+        }).then((data) => {if (localStorage.getItem("accessToken") === null){
+          localStorage.setItem("accessToken", data.token)
+          getUserData(data.token)
+        }})
   }
 
-  // async function getAccessToken(code){
-  //   const params = "?client_id=" + CLIENT_ID + "&client_secret=" + CLIENT_SECRET + "&code=" + code;
-  //   console.log(params);
-  //   const link = "https://github.com/login/oauth/access_token" + params;
-  //   await fetch(link, {
-  //     mode: 'cors',
-  //     method: "POST",
-  //     headers: {
-  //       "Accept": "application/json",
-  //       "Access-Control-Allow-Origin": "*"
-  //     }
-
-  //   }).then((response) => {
-  //     return response.json();
-  //   }).then((data) => {
-  //      console.log(data)
-  //   })
-  // }
+  async function getUserData(token: string){
+    await fetch("http://localhost:8000/getUserData", {
+      method:"POST",
+      body:JSON.stringify({
+        token:token
+      })
+    }).then((response) => {
+          return response.json();
+        }).then((data) => {
+          setCredentials([data.name, data.login])
+        })
+  }
 
   return (
     <div className='App'>
@@ -97,11 +87,11 @@ function App(){
           </button>
         </div>}
         {isLogged && <div className='container'>
-          <div className='label'>
-            Ваше счастливое число на эти 5 секунд!
+          <div className='label_greeting'>
+            Добро пожаловать, {credentials[0]} или {credentials[1]}! Ваше счастливое число на эти 5 секунд!
           </div>
           <div className="circle" >
-            {number != null ? number.generated : null}
+            {number != "" ? number : null}
           </div>
           <button className='button' onClick={logoutFromGitHub}>
             Выйти

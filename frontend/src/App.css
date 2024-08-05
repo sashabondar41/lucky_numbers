@@ -76,4 +76,16 @@ body {
   text-align: center;
 }
 
+.label_greeting {
+  width: 700px;
+  height: 40px;
+  position: absolute;
+  left: 50%;
+  top: -20%;
+  font-size: 40px;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  text-align: center;
+}
+
 
