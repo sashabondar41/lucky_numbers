@@ -78,7 +78,6 @@ func (s *server) Start(addr string) error {
 			context.JSON(http.StatusBadRequest, gin.H{"Failed to read response from GitHub": err.Error()})
 			return
 		}
-		fmt.Println(string(bodyBytes))
 		bodyString := string(bodyBytes)[13:53]
 		response.Token = bodyString
 		context.JSON(http.StatusOK, response)
