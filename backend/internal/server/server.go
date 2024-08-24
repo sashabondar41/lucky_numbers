@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"io"
 	"net/http"
 	"random_numbers/internal/dto"
@@ -14,12 +15,26 @@ import (
 
 type server struct {
 	g            *gin.Engine
+	origin       string
 	number       string
 	clientSecret string
+	upgrader     websocket.Upgrader
 }
 
 func New() *server {
-	return &server{gin.Default(), generator.Generate(), "76a69653500ee99eb3606d505d2efe381f24bab6"}
+	return &server{
+		gin.Default(),
+		"http://localhost:5173",
+		generator.Generate(),
+		"76a69653500ee99eb3606d505d2efe381f24bab6",
+		websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		},
+	}
 }
 
 func (s *server) Generate() {
@@ -40,23 +55,48 @@ func (s *server) Generate() {
 
 func (s *server) Start(addr string) error {
 	s.g.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     []string{s.origin},
 		AllowMethods:     []string{"PUT", "PATCH", "POST", "GET"},
 		AllowHeaders:     []string{"Origin, Content-Type, Accept"},
+		AllowWebSockets:  true,
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-			return origin == "https://github.com"
-		},
-		MaxAge: 12 * time.Hour,
+		MaxAge:           12 * time.Hour,
 	}))
 	fmt.Println("Server running on port 8000")
 	s.Generate()
 
-	s.g.GET("/getNumber", func(context *gin.Context) {
-		var response = new(dto.GetNumberResponse)
-		response.Generated = s.number
-		context.JSON(http.StatusOK, response)
+	s.g.GET("/ws", func(context *gin.Context) {
+		conn, err := s.upgrader.Upgrade(context.Writer, context.Request, nil)
+		if err != nil {
+			context.JSON(http.StatusBadRequest, gin.H{"Failed to handshake": err.Error()})
+			return
+		}
+		defer func(conn *websocket.Conn) {
+			err = conn.Close()
+			if err != nil {
+				context.JSON(http.StatusBadRequest, gin.H{"Failed to properly close connection": err.Error()})
+				return
+			}
+		}(conn)
+		curr := s.number
+		err = conn.WriteMessage(websocket.TextMessage, []byte(curr))
+		if err != nil {
+			context.JSON(http.StatusBadRequest, gin.H{"Failed to send a message": err.Error()})
+			return
+		}
+		for {
+			if curr == s.number {
+				continue
+			} else {
+				curr = s.number
+				err = conn.WriteMessage(websocket.TextMessage, []byte(curr))
+				if err != nil {
+					context.JSON(http.StatusBadRequest, gin.H{"Failed to send a message": err.Error()})
+					return
+				}
+			}
+		}
 	})
 
 	s.g.POST("/getAccessToken", func(context *gin.Context) {
@@ -78,7 +118,6 @@ func (s *server) Start(addr string) error {
 			context.JSON(http.StatusBadRequest, gin.H{"Failed to read response from GitHub": err.Error()})
 			return
 		}
-		fmt.Println(string(bodyBytes))
 		bodyString := string(bodyBytes)[13:53]
 		response.Token = bodyString
 		context.JSON(http.StatusOK, response)

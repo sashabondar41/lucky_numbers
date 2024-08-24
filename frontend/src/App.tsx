@@ -3,41 +3,39 @@ import {useState} from 'react';
 import './App.css'
 
 const CLIENT_ID = "Ov23liOrQ94iafbT1wjK"
+const URL = "localhost:8000"
+const GIT_LOGIN_URL = "https://github.com/login/oauth"
+
 
 function App(){
   const [isLogged, setIsLogged] = useState(false);
   const [number, setNumber] = useState<string>("");
   const [credentials, setCredentials] = useState(["", ""]);
-  
+
   useEffect(()=> {
     const queryString = window.location.search;
     const urlParams = new URLSearchParams(queryString);
+    
     var code = urlParams.get("code")
     if (code == null && localStorage.getItem("accessToken") === null){
       setIsLogged(false)
     }else{
       setIsLogged(true)
-      getAccessToken(code)
-      let interval = setInterval(async () => {
-        await fetch("http://localhost:8000/getNumber", {
-          method: "GET"
-        })
-        .then(res => res.json())
-        .then(
-          (result) => {
-            setNumber(result.generated);
-          }
-        );
-      }, 500);
-      return () => {
-        clearInterval(interval);
+      if (localStorage.getItem("accessToken") === null){
+        getAccessToken(code)
+      } else {
+        getUserData(localStorage.getItem("accessToken"))
       }
+      const socket = new WebSocket("ws://" + URL + "/ws")
+    
+      socket.addEventListener("message", event => {
+        setNumber(event.data);
+      });
     }
   }, []);
 
   function loginWithGitHub() {
-    window.location.assign("https://github.com/login/oauth/authorize?client_id=" + CLIENT_ID //+ "&prompt=consent"
-      )
+    window.location.assign(GIT_LOGIN_URL + "/authorize?client_id=" + CLIENT_ID + "&prompt=consent")
   }
 
   function logoutFromGitHub(){
@@ -46,11 +44,11 @@ function App(){
   }
 
   async function getAccessToken(code: string | null){
-    await fetch("http://localhost:8000/getAccessToken", {
+    await fetch("http://" + URL + "/getAccessToken", {
       method:"POST",
       body:JSON.stringify({
         id:CLIENT_ID, 
-        url:"https://github.com/login/oauth/access_token",
+        url:GIT_LOGIN_URL + "/access_token",
         code:code
       })
     }).then((response) => {
@@ -61,8 +59,8 @@ function App(){
         }})
   }
 
-  async function getUserData(token: string){
-    await fetch("http://localhost:8000/getUserData", {
+  async function getUserData(token: string | null){
+    await fetch("http://" + URL + "/getUserData", {
       method:"POST",
       body:JSON.stringify({
         token:token
