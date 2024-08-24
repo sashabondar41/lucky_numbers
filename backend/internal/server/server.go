@@ -18,7 +18,6 @@ type server struct {
 	origin       string
 	number       string
 	clientSecret string
-	upgrader     websocket.Upgrader
 }
 
 func New() *server {
@@ -27,13 +26,6 @@ func New() *server {
 		"http://localhost:5173",
 		generator.Generate(),
 		"76a69653500ee99eb3606d505d2efe381f24bab6",
-		websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-		},
 	}
 }
 
@@ -67,7 +59,14 @@ func (s *server) Start(addr string) error {
 	s.Generate()
 
 	s.g.GET("/ws", func(context *gin.Context) {
-		conn, err := s.upgrader.Upgrade(context.Writer, context.Request, nil)
+		var upgrader = websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		}
+		conn, err := upgrader.Upgrade(context.Writer, context.Request, nil)
 		if err != nil {
 			context.JSON(http.StatusBadRequest, gin.H{"Failed to handshake": err.Error()})
 			return
@@ -75,24 +74,22 @@ func (s *server) Start(addr string) error {
 		defer func(conn *websocket.Conn) {
 			err = conn.Close()
 			if err != nil {
-				context.JSON(http.StatusBadRequest, gin.H{"Failed to properly close connection": err.Error()})
+				context.JSON(http.StatusOK, gin.H{"Failed to properly close connection": err.Error()})
 				return
 			}
 		}(conn)
 		curr := s.number
 		err = conn.WriteMessage(websocket.TextMessage, []byte(curr))
 		if err != nil {
-			context.JSON(http.StatusBadRequest, gin.H{"Failed to send a message": err.Error()})
+			context.JSON(http.StatusOK, gin.H{"Connection lost due to message sending failure": err.Error()})
 			return
 		}
 		for {
-			if curr == s.number {
-				continue
-			} else {
+			if curr != s.number {
 				curr = s.number
 				err = conn.WriteMessage(websocket.TextMessage, []byte(curr))
 				if err != nil {
-					context.JSON(http.StatusBadRequest, gin.H{"Failed to send a message": err.Error()})
+					context.JSON(http.StatusOK, gin.H{"Connection lost due to message sending failure": err.Error()})
 					return
 				}
 			}
